@@ -7,13 +7,11 @@ import time
 import os
 
 def train_model():
-    """Improved training to maximize training accuracy while remaining stable."""
-    
-    # Hyperparameters (tune here)
-    epochs = 6
+    # Hyperparameters
+    epochs = 10
     batch_size = 24
     base_lr = 3e-4
-    weight_decay = 0.0  # maximize train accuracy
+    weight_decay = 1e-4
     max_grad_norm = 1.0
     
     # Device
@@ -22,10 +20,8 @@ def train_model():
             'mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu')
     )
     print(f"Using device: {device}")
-    
     print("Loading dataset...")
-    # Disable augmentations to maximize fit on train (higher training accuracy)
-    train_loader, val_loader, class_names = get_loaders(batch_size=batch_size, augment_level="none")
+    train_loader, val_loader, class_names = get_loaders(batch_size=batch_size, augment_level="strong", balance=True)
     num_classes = len(class_names)
     
     print(f"Found {num_classes} art styles")
@@ -35,25 +31,25 @@ def train_model():
     print("Loading pretrained ResNet18...")
     model = models.resnet18(weights='DEFAULT')
     
-    # Unfreeze deeper layers for higher capacity
     for name, param in model.named_parameters():
         if any(layer in name for layer in ['conv1', 'bn1', 'layer1', 'layer2']):
             param.requires_grad = False
         else:
             param.requires_grad = True
     
-    # Replace classifier head with higher-capacity MLP (no dropout for max train acc)
     in_features = model.fc.in_features
     model.fc = nn.Sequential(
+        nn.Dropout(p=0.3),
         nn.Linear(in_features, 768),
         nn.ReLU(inplace=True),
+        nn.Dropout(p=0.2),
         nn.Linear(768, 512),
         nn.ReLU(inplace=True),
+        nn.Dropout(p=0.2),
         nn.Linear(512, num_classes)
     )
     model = model.to(device)
     
-    # Loss & Optimizer (different LR for pretrained vs head)
     criterion = nn.CrossEntropyLoss()
     pretrained_params = []
     head_params = []
@@ -66,6 +62,9 @@ def train_model():
         {'params': head_params, 'lr': base_lr, 'weight_decay': weight_decay},
     ])
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    scaler = torch.cuda.amp.GradScaler(enabled=(device.type == 'cuda'))
+    best_val_acc = 0.0
+    best_path = "ml_model/model_best.pth"
     
     print(f"Starting training for {epochs} epochs...")
     print("=" * 60)
@@ -83,13 +82,27 @@ def train_model():
             images = images.to(device)
             labels = labels.to(device)
             
-            outputs = model(images)
-            loss = criterion(outputs, labels)
+            # Mixup (alpha=0.2)
+            lam = 1.0
+            if images.size(0) > 1:
+                alpha = 0.2
+                lam = torch.distributions.Beta(alpha, alpha).sample().item()
+                index = torch.randperm(images.size(0)).to(device)
+                mixed_images = lam * images + (1 - lam) * images[index, :]
+                targets_a, targets_b = labels, labels[index]
+            else:
+                mixed_images = images
+                targets_a, targets_b = labels, labels
+            
+            with torch.cuda.amp.autocast(enabled=(device.type == 'cuda')):
+                outputs = model(mixed_images)
+                loss = lam * criterion(outputs, targets_a) + (1 - lam) * criterion(outputs, targets_b)
             
             optimizer.zero_grad()
-            loss.backward()
+            scaler.scale(loss).backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
             
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
@@ -114,28 +127,44 @@ def train_model():
         print(f"  Train Loss: {train_loss:.4f}")
         print(f"  Train Acc: {train_acc:.2f}% (best {best_train_acc:.2f}%)")
         
-        # Optional quick validation (first 100 batches) just to monitor; skip if slow
+        # Validation
         if val_loader and len(val_loader) > 0:
             model.eval()
             val_correct = 0
             val_total = 0
+            val_loss_sum = 0.0
             with torch.no_grad():
                 for v_idx, (v_images, v_labels) in enumerate(val_loader):
-                    if v_idx >= 100:
-                        break
                     v_images = v_images.to(device)
                     v_labels = v_labels.to(device)
-                    v_out = model(v_images)
+                    with torch.cuda.amp.autocast(enabled=(device.type == 'cuda')):
+                        v_out = model(v_images)
+                        v_loss = criterion(v_out, v_labels)
+                        val_loss_sum += v_loss.item()
                     _, v_pred = torch.max(v_out, 1)
                     val_total += v_labels.size(0)
                     val_correct += (v_pred == v_labels).sum().item()
             if val_total > 0:
                 val_acc = 100.0 * val_correct / val_total
-                print(f"  Val Acc (sample): {val_acc:.2f}%")
+                val_loss = val_loss_sum / max(1, len(val_loader))
+                print(f"  Val Loss: {val_loss:.4f}  Val Acc: {val_acc:.2f}%")
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    torch.save({
+                        'model_state_dict': model.state_dict(),
+                        'class_names': class_names,
+                        'num_classes': num_classes,
+                        'model_type': 'resnet18_improved',
+                        'epoch': epoch + 1,
+                        'train_loss': train_loss,
+                        'train_acc': train_acc,
+                        'val_loss': val_loss,
+                        'val_acc': val_acc
+                    }, best_path)
+                    print(f"  ✓ Best model updated: {best_val_acc:.2f}% -> {best_path}")
         
         print("-" * 60)
         
-        # Save checkpoint each epoch
         ckpt_path = f"ml_model/model_epoch_{epoch+1}.pth"
         torch.save({
             'model_state_dict': model.state_dict(),
