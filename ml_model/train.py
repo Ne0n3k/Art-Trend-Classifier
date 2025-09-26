@@ -127,14 +127,15 @@ def train():
     ema_state = {}
     if use_ema:
         for name, param in model.named_parameters():
-            if param.requires_grad:
-                ema_state[name] = param.data.clone()
+            ema_state[name] = param.data.clone()
 
     def update_ema():
         if not use_ema:
             return
         for name, param in model.named_parameters():
-            if param.requires_grad:
+            if name not in ema_state:
+                ema_state[name] = param.data.clone()
+            else:
                 ema_state[name].mul_(ema_decay).add_(param.data, alpha=1.0 - ema_decay)
 
     def swap_to_ema():
@@ -142,7 +143,7 @@ def train():
             return []
         backup = []
         for name, param in model.named_parameters():
-            if param.requires_grad and name in ema_state:
+            if name in ema_state:
                 backup.append((param, param.data.clone()))
                 param.data.copy_(ema_state[name])
         return backup
