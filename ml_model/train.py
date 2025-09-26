@@ -57,12 +57,12 @@ def train():
     base_dir = "data/wikiart"
     batch_size = 16
     num_workers = 0
-    image_size = 224
+    image_size = 288
     num_epochs = 40
     lr_head = 1e-3
     lr_backbone = 1e-4
     weight_decay = 0.02
-    label_smoothing = 0.1
+    label_smoothing = 0.05
     max_grad_norm = 2.0
     mixup_alpha = 0.2
     cutmix_alpha = 0.2
@@ -122,6 +122,35 @@ def train():
     criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     criterion_ce = nn.CrossEntropyLoss()
 
+    use_ema = True
+    ema_decay = 0.999
+    ema_state = {}
+    if use_ema:
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                ema_state[name] = param.data.clone()
+
+    def update_ema():
+        if not use_ema:
+            return
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                ema_state[name].mul_(ema_decay).add_(param.data, alpha=1.0 - ema_decay)
+
+    def swap_to_ema():
+        if not use_ema:
+            return []
+        backup = []
+        for name, param in model.named_parameters():
+            if param.requires_grad and name in ema_state:
+                backup.append((param, param.data.clone()))
+                param.data.copy_(ema_state[name])
+        return backup
+
+    def restore_from_backup(backup):
+        for param, data in backup:
+            param.data.copy_(data)
+
     best_val_acc = 0.0
     best_path = "ml_model/model/model_best.pth"
 
@@ -134,7 +163,7 @@ def train():
             for p in model.parameters():
                 p.requires_grad = True
             optimizer = optim.AdamW(model.parameters(), lr=lr_backbone, weight_decay=weight_decay)
-            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, min_lr=1e-6)
             unfroze = True
         # Train
         model.train()
@@ -143,12 +172,13 @@ def train():
         total = 0
         start = time.time()
 
+        current_mix_prob = mix_prob if epoch < 10 else 0.3
         for images, labels in train_loader:
             images = images.to(device)
             labels = labels.to(device)
 
             optimizer.zero_grad()
-            apply_mix = random.random() < mix_prob
+            apply_mix = random.random() < current_mix_prob
             if apply_mix:
                 if random.random() < 0.5:
                     images_aug, targets_a, targets_b, lam = mixup_batch(images, labels, alpha=mixup_alpha)
@@ -162,6 +192,7 @@ def train():
             loss.backward()
             clip_grad_norm_(model.parameters(), max_grad_norm)
             optimizer.step()
+            update_ema()
 
             running_loss += loss.item()
             _, preds = torch.max(outputs, 1)
@@ -170,23 +201,30 @@ def train():
 
         train_loss = running_loss / max(1, len(train_loader))
         train_acc = 100.0 * correct / max(1, total)
-        scheduler.step(epoch)
+        if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+            scheduler.step(val_loss_sum / max(1, len(val_loader)))  # will be recomputed below; harmless first epoch
+        else:
+            scheduler.step(epoch)
 
         # Validate
         model.eval()
         val_correct = 0
         val_total = 0
         val_loss_sum = 0.0
+        backup_params = swap_to_ema()
         with torch.no_grad():
             for images, labels in val_loader:
                 images = images.to(device)
                 labels = labels.to(device)
                 outputs = model(images)
+                outputs_flipped = model(torch.flip(images, dims=[3]))
+                outputs = (outputs + outputs_flipped) * 0.5
                 loss = criterion(outputs, labels)
                 val_loss_sum += loss.item()
                 _, preds = torch.max(outputs, 1)
                 val_total += labels.size(0)
                 val_correct += (preds == labels).sum().item()
+        restore_from_backup(backup_params)
 
         val_loss = val_loss_sum / max(1, len(val_loader))
         val_acc = 100.0 * val_correct / max(1, val_total)
