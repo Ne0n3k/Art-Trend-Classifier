@@ -46,8 +46,10 @@ class ArtDataset(Dataset):
 
 
 def get_transforms(image_size: int = 224) -> Tuple[A.Compose, A.Compose]:
+    resize_size = max(320, image_size)
+
     train_transform = A.Compose([
-        A.Resize(height=256, width=256),
+        A.Resize(height=resize_size, width=resize_size),
         A.CenterCrop(height=image_size, width=image_size),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.2),
@@ -59,7 +61,7 @@ def get_transforms(image_size: int = 224) -> Tuple[A.Compose, A.Compose]:
     ])
 
     val_test_transform = A.Compose([
-        A.Resize(height=256, width=256),
+        A.Resize(height=resize_size, width=resize_size),
         A.CenterCrop(height=image_size, width=image_size),
         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ToTensorV2(),
