@@ -5,7 +5,7 @@ from torchvision import models, transforms
 from PIL import Image
 
 
-def load_model(model_path="ml_model/model_best.pth"):
+def load_model(model_path="ml_model/model/model_best.pth"):
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found: {model_path}")
     chkpt = torch.load(model_path, map_location='cpu')
