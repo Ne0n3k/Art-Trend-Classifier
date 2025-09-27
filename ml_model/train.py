@@ -57,17 +57,18 @@ def train():
     base_dir = "data/wikiart"
     batch_size = 16
     num_workers = 0
-    image_size = 288
-    num_epochs = 40
+    image_size = 320
+    num_epochs = 80
     lr_head = 1e-3
     lr_backbone = 1e-4
-    weight_decay = 0.02
-    label_smoothing = 0.05
+    weight_decay = 0.05
+    label_smoothing = 0.02
     max_grad_norm = 2.0
-    mixup_alpha = 0.2
-    cutmix_alpha = 0.2
-    mix_prob = 0.6
-    patience = 7
+    mixup_alpha = 0.3
+    cutmix_alpha = 0.3
+    mix_prob = 0.7
+    patience = 10
+    accumulation_steps = 2
 
     device = torch.device('cuda' if torch.cuda.is_available() else (
         'mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu'))
@@ -118,7 +119,7 @@ def train():
         { 'params': model.fc.parameters(), 'lr': lr_head },
         { 'params': [p for n, p in model.named_parameters() if 'fc' not in n and p.requires_grad], 'lr': lr_backbone }
     ], weight_decay=weight_decay)
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=15, T_mult=2, eta_min=1e-6)
     criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     criterion_ce = nn.CrossEntropyLoss()
 
@@ -127,14 +128,15 @@ def train():
     ema_state = {}
     if use_ema:
         for name, param in model.named_parameters():
-            if param.requires_grad:
-                ema_state[name] = param.data.clone()
+            ema_state[name] = param.data.clone()
 
     def update_ema():
         if not use_ema:
             return
         for name, param in model.named_parameters():
-            if param.requires_grad:
+            if name not in ema_state:
+                ema_state[name] = param.data.clone()
+            else:
                 ema_state[name].mul_(ema_decay).add_(param.data, alpha=1.0 - ema_decay)
 
     def swap_to_ema():
@@ -142,7 +144,7 @@ def train():
             return []
         backup = []
         for name, param in model.named_parameters():
-            if param.requires_grad and name in ema_state:
+            if name in ema_state:
                 backup.append((param, param.data.clone()))
                 param.data.copy_(ema_state[name])
         return backup
@@ -163,7 +165,7 @@ def train():
             for p in model.parameters():
                 p.requires_grad = True
             optimizer = optim.AdamW(model.parameters(), lr=lr_backbone, weight_decay=weight_decay)
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2, min_lr=1e-6)
+            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=15, T_mult=2, eta_min=1e-6)
             unfroze = True
         # Train
         model.train()
@@ -173,7 +175,7 @@ def train():
         start = time.time()
 
         current_mix_prob = mix_prob if epoch < 10 else 0.3
-        for images, labels in train_loader:
+        for batch_idx, (images, labels) in enumerate(train_loader):
             images = images.to(device)
             labels = labels.to(device)
 
@@ -190,9 +192,11 @@ def train():
                 outputs = model(images)
                 loss = criterion(outputs, labels)
             loss.backward()
-            clip_grad_norm_(model.parameters(), max_grad_norm)
-            optimizer.step()
-            update_ema()
+            if (batch_idx + 1) % accumulation_steps == 0:
+                clip_grad_norm_(model.parameters(), max_grad_norm)
+                optimizer.step()
+                optimizer.zero_grad()
+                update_ema()
 
             running_loss += loss.item()
             _, preds = torch.max(outputs, 1)
@@ -201,10 +205,6 @@ def train():
 
         train_loss = running_loss / max(1, len(train_loader))
         train_acc = 100.0 * correct / max(1, total)
-        if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
-            scheduler.step(val_loss_sum / max(1, len(val_loader)))  # will be recomputed below; harmless first epoch
-        else:
-            scheduler.step(epoch)
 
         # Validate
         model.eval()
@@ -227,6 +227,10 @@ def train():
         restore_from_backup(backup_params)
 
         val_loss = val_loss_sum / max(1, len(val_loader))
+        if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+            scheduler.step(val_loss)
+        else:
+            scheduler.step(epoch)
         val_acc = 100.0 * val_correct / max(1, val_total)
 
         print(f"Epoch [{epoch+1}/{num_epochs}]  Train: loss={train_loss:.4f} acc={train_acc:.2f}%  |  Val: loss={val_loss:.4f} acc={val_acc:.2f}%")
