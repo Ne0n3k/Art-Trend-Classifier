@@ -46,7 +46,7 @@ class ArtDataset(Dataset):
 
 
 def get_transforms(image_size: int = 224) -> Tuple[A.Compose, A.Compose]:
-    resize_size = max(320, image_size)
+    resize_size = max(352, image_size)
 
     train_transform = A.Compose([
         A.Resize(height=resize_size, width=resize_size),
@@ -54,6 +54,8 @@ def get_transforms(image_size: int = 224) -> Tuple[A.Compose, A.Compose]:
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.2),
         A.Rotate(limit=20, p=0.5),
+        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
+        A.GaussianBlur(blur_limit=3, p=0.3),
         A.RandomBrightnessContrast(p=0.5),
         A.CoarseDropout(max_holes=1, max_height=32, max_width=32, p=0.3),
         A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
