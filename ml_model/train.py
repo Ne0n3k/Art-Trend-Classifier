@@ -58,7 +58,7 @@ def train():
     batch_size = 16
     num_workers = 0
     image_size = 320
-    num_epochs = 80
+    num_epochs = 40
     lr_head = 1e-3
     lr_backbone = 1e-4
     weight_decay = 0.05
