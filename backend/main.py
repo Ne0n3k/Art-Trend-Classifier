@@ -31,10 +31,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else (
     'mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu'))
 
 def load_model():
-    """Load the trained model"""
+    # Load the trained model
     global model, class_names
     
-    model_path = "ml_model/model/model_best.pth"
+    model_path = "ml_model/model/model_best_82_73.pth"
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found: {model_path}")
     
@@ -57,7 +57,7 @@ def load_model():
     print(f"Model loaded successfully! Classes: {len(class_names)}")
 
 def get_transform():
-    """Get image preprocessing transform"""
+    # Get image preprocessing transform
     return A.Compose([
         A.Resize(height=352, width=352),
         A.CenterCrop(height=320, width=320),
@@ -197,7 +197,7 @@ async def root():
 
 @app.post("/analyze")
 async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """Analyze uploaded artwork image"""
+    # Analyze uploaded artwork image
     
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
