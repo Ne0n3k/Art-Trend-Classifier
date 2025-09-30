@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #00ff62 0%, #00d9ff 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -181,6 +181,17 @@
             border-bottom: none;
         }
 
+        .all-predictions {
+            margin-top: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .all-predictions .prediction-item {
+            padding: 8px 0;
+            font-size: 0.9rem;
+        }
+
         .loading {
             text-align: center;
             color: #667eea;
@@ -213,14 +224,14 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Art Trend Classifier</h1>
-            <p>Wrzuć obraz dzieła sztuki, a AI przeanalizuje jego styl i napisze recenzję</p>
+            <h1>Art Trand Classifier</h1>
+            <p>Upload an artwork image and AI will analyze its style and write a review</p>
         </div>
 
-        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
             <div class="upload-icon">🖼️</div>
-            <div class="upload-text">Kliknij lub przeciągnij obraz tutaj</div>
-            <div class="upload-subtext">Obsługiwane formaty: JPG, PNG, JPEG</div>
+            <div class="upload-text">Click or drag an image here</div>
+            <div class="upload-subtext">Supported formats: JPG, PNG, JPEG</div>
         </div>
 
         <input type="file" id="fileInput" accept="image/*">
@@ -231,25 +242,25 @@
 
         <div style="text-align: center;">
             <button class="btn" id="analyzeBtn" onclick="analyzeImage()" disabled>
-                Analizuj Dzieło Sztuki
+                Analyze Artwork
             </button>
-            <button class="btn" onclick="clearResults()">Wyczyść</button>
+            <button class="btn" onclick="clearResults()">Clear</button>
         </div>
 
         <div id="loading" class="loading" style="display: none;">
-            <p>🤖 AI analizuje dzieło sztuki...</p>
+            <p>🤖 AI is analyzing the artwork...</p>
         </div>
 
         <div id="error" class="error" style="display: none;"></div>
 
         <div id="results" class="results">
             <div class="result-item">
-                <div class="result-label">🎭 Rozpoznany styl:</div>
+                <div class="result-label">🎭 Recognized style:</div>
                 <div class="result-value" id="predictedStyle">-</div>
             </div>
 
             <div class="result-item">
-                <div class="result-label">📊 Pewność predykcji:</div>
+                <div class="result-label">📊 Prediction confidence:</div>
                 <div class="confidence-bar">
                     <div class="confidence-fill" id="confidenceBar" style="width: 0%"></div>
                 </div>
@@ -257,13 +268,22 @@
             </div>
 
             <div class="result-item">
-                <div class="result-label">✍️ Recenzja AI:</div>
+                <div class="result-label">✍️ AI Review:</div>
                 <div class="result-value" id="reviewText">-</div>
             </div>
 
             <div class="result-item">
-                <div class="result-label">🏆 Top 3 przewidywania:</div>
+                <div class="result-label">🏆 Top 3 predictions:</div>
                 <div class="top-predictions" id="topPredictions">
+                    <!-- Dynamically filled -->
+                </div>
+            </div>
+
+            <div class="result-item">
+                <div class="result-label" style="cursor: pointer;" onclick="toggleAllPredictions()">
+                    📋 All predictions <span id="expandIcon">▼</span>
+                </div>
+                <div class="all-predictions" id="allPredictions" style="display: none;">
                     <!-- Dynamically filled -->
                 </div>
             </div>
@@ -308,7 +328,7 @@
 
         function handleFile(file) {
             if (!file.type.startsWith('image/')) {
-                showError('Proszę wybrać plik obrazu (JPG, PNG, JPEG)');
+                showError('Please select an image file (JPG, PNG, JPEG)');
                 return;
             }
 
@@ -320,6 +340,9 @@
                 document.getElementById('previewImage').src = e.target.result;
                 document.getElementById('previewContainer').style.display = 'block';
                 document.getElementById('analyzeBtn').disabled = false;
+                
+                // Hide upload area after file selection
+                document.getElementById('uploadArea').style.display = 'none';
             };
             reader.readAsDataURL(file);
 
@@ -329,7 +352,7 @@
 
         async function analyzeImage() {
             if (!selectedFile) {
-                showError('Proszę najpierw wybrać obraz');
+                showError('Please select an image first');
                 return;
             }
 
@@ -354,7 +377,7 @@
                 
             } catch (error) {
                 console.error('Error:', error);
-                showError(`Błąd podczas analizy: ${error.message}`);
+                showError(`Error during analysis: ${error.message}`);
             } finally {
                 showLoading(false);
             }
@@ -391,6 +414,24 @@
                 topPredictions.appendChild(item);
             });
             
+            // All predictions
+            const allPredictions = document.getElementById('allPredictions');
+            allPredictions.innerHTML = '';
+            
+            result.all_predictions.forEach((pred, index) => {
+                const item = document.createElement('div');
+                item.className = 'prediction-item';
+                
+                const style = pred.style.replace(/_/g, ' ');
+                const conf = Math.round(pred.confidence * 100);
+                
+                item.innerHTML = `
+                    <span>${index + 1}. ${style}</span>
+                    <span>${conf}%</span>
+                `;
+                allPredictions.appendChild(item);
+            });
+            
             // Show results
             document.getElementById('results').style.display = 'block';
         }
@@ -416,11 +457,27 @@
                 document.getElementById('fileInput').value = '';
                 document.getElementById('previewContainer').style.display = 'none';
                 document.getElementById('analyzeBtn').disabled = true;
+                
+                // Show upload area again
+                document.getElementById('uploadArea').style.display = 'block';
             }
             
             document.getElementById('results').style.display = 'none';
             hideError();
             showLoading(false);
+        }
+
+        function toggleAllPredictions() {
+            const allPredictions = document.getElementById('allPredictions');
+            const expandIcon = document.getElementById('expandIcon');
+            
+            if (allPredictions.style.display === 'none') {
+                allPredictions.style.display = 'block';
+                expandIcon.textContent = '▲';
+            } else {
+                allPredictions.style.display = 'none';
+                expandIcon.textContent = '▼';
+            }
         }
 
         // Check API connection on load
@@ -433,7 +490,7 @@
                     throw new Error('API not responding');
                 }
             } catch (error) {
-                showError('Nie można połączyć się z API. Upewnij się, że backend jest uruchomiony na porcie 8000.');
+                showError('Cannot connect to API. Make sure backend is running on port 8000.');
             }
         });
     </script>

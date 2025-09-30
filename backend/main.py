@@ -68,99 +68,99 @@ def get_transform():
 def generate_review(style: str, confidence: float) -> str:
     reviews = {
         "Impressionism": [
-            "Miękkie światło i rozmyte kontury.",
-            "Jasne kolory i ulotne wrażenia.",
-            "Romantyczna gra światłocienia."
+            "Soft light and blurred contours.",
+            "Bright colors and fleeting impressions.",
+            "Romantic play of light and shadow."
         ],
         "Post_Impressionism": [
-            "Silniejsze kontrasty i ekspresja.",
-            "Nasycone kolory i symbolizm.",
-            "Ewolucja od impresjonizmu."
+            "Stronger contrasts and expression.",
+            "Saturated colors and symbolism.",
+            "Evolution from impressionism."
         ],
         "Expressionism": [
-            "Intensywne kolory i emocje.",
-            "Zniekształcone formy i dramat.",
-            "Wewnętrzne przeżycia artysty."
+            "Intense colors and emotions.",
+            "Distorted forms and drama.",
+            "Artist's inner experiences."
         ],
         "Cubism": [
-            "Geometryczne formy i fragmentacja.",
-            "Wieloperspektywiczne ujęcie tematu.",
-            "Analityczne rozbicie rzeczywistości."
+            "Geometric forms and fragmentation.",
+            "Multi-perspective view of subject.",
+            "Analytical breakdown of reality."
         ],
         "Abstract_Expressionism": [
-            "Czysta abstrakcja i spontaniczność.",
-            "Ekspresyjny gest malarski.",
-            "Emocje przez abstrakcyjne formy."
+            "Pure abstraction and spontaneity.",
+            "Expressive brush gesture.",
+            "Emotions through abstract forms."
         ],
         "Fauvism": [
-            "Dzikość i intensywność kolorów.",
-            "Nienaturalne zestawienia barw.",
-            "Ekspresyjne użycie koloru."
+            "Wildness and color intensity.",
+            "Unnatural color combinations.",
+            "Expressive use of color."
         ],
         "Pop_Art": [
-            "Jasne kolory i kontrasty.",
-            "Kultura popularna w sztuce.",
-            "Komercyjna estetyka przetworzona."
+            "Bright colors and contrasts.",
+            "Popular culture in art.",
+            "Commercial aesthetics transformed."
         ],
         "Minimalism": [
-            "Redukcja do istoty.",
-            "Prostota i czystość formy.",
-            "Mniej znaczy więcej."
+            "Reduction to essence.",
+            "Simplicity and purity of form.",
+            "Less is more."
         ],
         "Color_Field_Painting": [
-            "Duże płaszczyzny koloru.",
-            "Medytacyjna kompozycja.",
-            "Spokój przez jednolitość."
+            "Large color planes.",
+            "Meditative composition.",
+            "Peace through uniformity."
         ],
         "Art_Nouveau_Modern": [
-            "Organiczne płynne formy.",
-            "Dekoracyjność i elegancja.",
-            "Inspiracje naturą."
+            "Organic flowing forms.",
+            "Decorative elegance.",
+            "Nature-inspired designs."
         ],
         "Symbolism": [
-            "Ukryte znaczenia i symbole.",
-            "Tajemnicza atmosfera.",
-            "Wyrażenie idei duchowych."
+            "Hidden meanings and symbols.",
+            "Mysterious atmosphere.",
+            "Expression of spiritual ideas."
         ],
         "Romanticism": [
-            "Emocjonalność nad racjonalnością.",
-            "Melancholia i natura.",
-            "Kult uczucia."
+            "Emotion over rationality.",
+            "Melancholy and nature.",
+            "Cult of feeling."
         ],
         "Baroque": [
-            "Teatralność i przepych.",
-            "Dynamiczna kompozycja.",
-            "Bogate detale."
+            "Theatricality and opulence.",
+            "Dynamic composition.",
+            "Rich details."
         ],
         "Rococo": [
-            "Delikatność i gracja.",
-            "Pastelowe kolory.",
-            "Arystokratyczna elegancja."
+            "Delicacy and grace.",
+            "Pastel colors.",
+            "Aristocratic elegance."
         ],
         "Northern_Renaissance": [
-            "Precyzja i realizm.",
-            "Dbałość o detale.",
-            "Symbolika religijna."
+            "Precision and realism.",
+            "Attention to detail.",
+            "Religious symbolism."
         ],
         "High_Renaissance": [
-            "Klasyczna harmonia.",
-            "Perfekcja techniczna.",
-            "Idealizacja formy."
+            "Classical harmony.",
+            "Technical perfection.",
+            "Idealization of form."
         ],
         "Naive_Art_Primitivism": [
-            "Naiwna spontaniczność.",
-            "Bezpośredniość wyrazu.",
-            "Autentyczność sztuki."
+            "Naive spontaneity.",
+            "Direct expression.",
+            "Authenticity of art."
         ],
         "Ukiyo_e": [
-            "Japoński drzeworyt.",
-            "Płaskie kolory.",
-            "Ulotna piękność."
+            "Japanese woodblock print.",
+            "Flat colors.",
+            "Fleeting beauty."
         ]
     }
     
     # Select review based on confidence
-    style_reviews = reviews.get(style, ["Interesujące dzieło o unikalnym charakterze artystycznym."])
+    style_reviews = reviews.get(style, ["Interesting work with unique artistic character."])
     
     if confidence > 0.8:
         review = style_reviews[0]
@@ -171,13 +171,13 @@ def generate_review(style: str, confidence: float) -> str:
     
     # Add confidence-based modifier
     if confidence > 0.9:
-        confidence_text = "Analiza z bardzo wysoką pewnością wskazuje na "
+        confidence_text = "Analysis with very high confidence indicates "
     elif confidence > 0.7:
-        confidence_text = "Z dużą pewnością można stwierdzić, że "
+        confidence_text = "With high confidence we can state that "
     elif confidence > 0.5:
-        confidence_text = "Prawdopodobnie mamy do czynienia z "
+        confidence_text = "We probably have "
     else:
-        confidence_text = "Dzieło może reprezentować "
+        confidence_text = "The work may represent "
     
     return f"{confidence_text}{style.replace('_', ' ').lower()}. {review}"
 
@@ -236,11 +236,21 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "confidence": float(prob.item())
             })
         
+        # Get all predictions (sorted by confidence)
+        all_probs, all_indices = torch.topk(probabilities, k=len(class_names))
+        all_predictions = []
+        for prob, idx in zip(all_probs[0], all_indices[0]):
+            all_predictions.append({
+                "style": class_names[idx.item()],
+                "confidence": float(prob.item())
+            })
+        
         return {
             "predicted_style": predicted_class,
             "confidence": confidence_score,
             "review": review,
             "top_predictions": top_predictions,
+            "all_predictions": all_predictions,
             "filename": file.filename
         }
         

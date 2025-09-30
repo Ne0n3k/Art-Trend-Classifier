@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Art Trend Classifier - AI Art Analysis</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .navbar {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            padding: 1rem 0;
+            transition: all 0.3s ease;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #333;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: #3498db;
+        }
+
+        .hero {
+            height: 100vh;
+            background: linear-gradient(135deg, #00ff62 0%, #00d9ff 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            mask: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+            -webkit-mask: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 800px;
+            padding: 0 2rem;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            opacity: 0;
+            transform: translateY(50px);
+            animation: slideUp 1s ease 0.5s forwards;
+        }
+
+        .hero p {
+            font-size: 1.3rem;
+            margin-bottom: 2rem;
+            opacity: 0;
+            transform: translateY(50px);
+            animation: slideUp 1s ease 0.7s forwards;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: #e74c3c;
+            color: white;
+            padding: 1rem 2rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateY(50px);
+            animation: slideUp 1s ease 0.9s forwards;
+            box-shadow: 0 10px 30px rgba(231, 76, 60, 0.3);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(231, 76, 60, 0.4);
+        }
+
+        .section {
+            padding: 8rem 0 5rem 0;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+
+        .section h2 {
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 3rem;
+            color: #2c3e50;
+        }
+
+        .section p {
+            font-size: 1.1rem;
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto 2rem;
+            color: #666;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            opacity: 0;
+            transform: translateY(50px);
+        }
+
+        .feature-card.animate {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: block;
+            text-align: center;
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+
+        .stats {
+            background: linear-gradient(135deg, #00ff62 0%, #00d9ff 100%);
+            color: white;
+            position: relative;
+            overflow: hidden;
+            border-radius: 20px;
+            margin: 2rem auto;
+            max-width: 1200px;
+        }
+
+        .stats::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="1" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .stats .section {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+        }
+
+        .stats h2 {
+            color: #0080ff;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .stats p {
+            color: white;
+            font-size: 1.2rem;
+            margin-bottom: 3rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+            justify-items: center;
+        }
+
+        .stat-item {
+            text-align: center;
+            opacity: 0;
+            transform: translateY(50px);
+        }
+
+        .stat-item.animate {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .step {
+            text-align: center;
+            opacity: 0;
+            transform: translateY(50px);
+        }
+
+        .step.animate {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: #00b3ff;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin: 0 auto 1rem;
+            text-align: center;
+        }
+
+        .tech-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            margin-top: 3rem;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .tech-item {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+            opacity: 0;
+            transform: translateY(50px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 200px;
+            flex: 0 0 auto;
+        }
+
+        .tech-item.animate {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .tech-item:hover {
+            transform: translateY(-5px);
+        }
+
+        .tech-name {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .tech-description {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 3rem 0;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        @keyframes slideUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero p {
+                font-size: 1.1rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .section {
+                padding: 3rem 1rem;
+            }
+
+            .section h2 {
+                font-size: 2rem;
+            }
+        }
+
+        .fade-in {
+            opacity: 0;
+            transform: translateY(50px);
+            transition: all 0.8s ease;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .parallax {
+            background-attachment: fixed;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">Art Trend Classifier</div>
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#how-it-works">How it Works</a></li>
+                <li><a href="#technologies">Technologies</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <h1>AI Art Trend Classifier</h1>
+            <p>Discover the artistic style of any artwork using advanced machine learning technology. Upload an image and get instant analysis with detailed reviews.</p>
+            <a href="index.html" class="cta-button">Try It Now</a>
+        </div>
+    </section>
+
+    <section id="features" class="section">
+        <h2 class="fade-in">Why Art Trend Classifier?</h2>
+        <p class="fade-in">Our advanced machine learning model can identify 18 different art styles with high accuracy, providing detailed analysis and artistic reviews.</p>
+        
+        <div class="features-grid">
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🎨</div>
+                <h3>18 Art Styles</h3>
+                <p>From Impressionism to Pop Art, our model recognizes a wide range of artistic movements with precision.</p>
+            </div>
+            
+            <div class="feature-card fade-in">
+                <div class="feature-icon">⚡</div>
+                <h3>Instant Analysis</h3>
+                <p>Get results in seconds with our optimized neural network architecture and efficient processing.</p>
+            </div>
+            
+            <div class="feature-card fade-in">
+                <div class="feature-icon">📊</div>
+                <h3>Detailed Reports</h3>
+                <p>Receive comprehensive analysis including confidence scores and detailed artistic reviews for each prediction.</p>
+            </div>
+            
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🔬</div>
+                <h3>Advanced AI</h3>
+                <p>Powered by ResNet50 deep learning model trained on thousands of artworks for maximum accuracy.</p>
+            </div>
+            
+            <div class="feature-card fade-in">
+                <div class="feature-icon">📱</div>
+                <h3>User Friendly</h3>
+                <p>Simple drag-and-drop interface that works on any device with an intuitive, modern design.</p>
+            </div>
+            
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🆓</div>
+                <h3>Free to Use</h3>
+                <p>Completely free service with no registration required. Just upload and analyze your artwork instantly.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section stats">
+        <h2 class="fade-in">Model Performance</h2>
+        <p class="fade-in">Our AI model achieves impressive accuracy rates across different art styles</p>
+        
+        <div class="stats-grid">
+            <div class="stat-item fade-in">
+                <div class="stat-number">82%</div>
+                <div class="stat-label">Training Accuracy</div>
+            </div>
+            
+            <div class="stat-item fade-in">
+                <div class="stat-number">73%</div>
+                <div class="stat-label">Validation Accuracy</div>
+            </div>
+            
+            <div class="stat-item fade-in">
+                <div class="stat-number">18</div>
+                <div class="stat-label">Art Styles Supported</div>
+            </div>
+            
+            <div class="stat-item fade-in">
+                <div class="stat-number">50</div>
+                <div class="stat-label">ResNet Layers</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="how-it-works" class="section">
+        <h2 class="fade-in">How It Works</h2>
+        <p class="fade-in">Simple three-step process to analyze any artwork</p>
+        
+        <div class="steps">
+            <div class="step fade-in">
+                <div class="step-number">1</div>
+                <h3>Upload Image</h3>
+                <p>Drag and drop or select an artwork image from your device. Supports JPG, PNG, and other common formats.</p>
+            </div>
+            
+            <div class="step fade-in">
+                <div class="step-number">2</div>
+                <h3>AI Analysis</h3>
+                <p>Our ResNet50 neural network processes the image and identifies the most likely art style with confidence scores.</p>
+            </div>
+            
+            <div class="step fade-in">
+                <div class="step-number">3</div>
+                <h3>Get Results</h3>
+                <p>Receive detailed analysis including the predicted style, confidence level, and an AI-generated artistic review.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="technologies" class="section">
+        <h2 class="fade-in">Technologies Used</h2>
+        <p class="fade-in">Built with cutting-edge technologies for optimal performance and accuracy</p>
+        
+        <div class="tech-grid">
+            <div class="tech-item fade-in">
+                <div class="tech-name">PyTorch</div>
+                <div class="tech-description">Deep learning framework</div>
+            </div>
+            
+            <div class="tech-item fade-in">
+                <div class="tech-name">ResNet50</div>
+                <div class="tech-description">Neural network architecture</div>
+            </div>
+            
+            <div class="tech-item fade-in">
+                <div class="tech-name">FastAPI</div>
+                <div class="tech-description">High-performance API framework</div>
+            </div>
+            
+            <div class="tech-item fade-in">
+                <div class="tech-name">Albumentations</div>
+                <div class="tech-description">Image preprocessing library</div>
+            </div>
+            
+            <div class="tech-item fade-in">
+                <div class="tech-name">HTML5/CSS3</div>
+                <div class="tech-description">Modern web interface</div>
+            </div>
+            
+            <div class="tech-item fade-in">
+                <div class="tech-name">JavaScript</div>
+                <div class="tech-description">Interactive frontend</div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <h3>Ready to Analyze Your Art?</h3>
+            <p>Upload an artwork image and discover its artistic style with our AI-powered classifier.</p>
+            <a href="index.html" class="cta-button" style="margin-top: 1rem;">Start Analyzing</a>
+        </div>
+    </footer>
+
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in').forEach(el => {
+            observer.observe(el);
+        });
+
+        window.addEventListener('scroll', () => {
+            const navbar = document.querySelector('.navbar');
+            if (window.scrollY > 100) {
+                navbar.style.background = 'rgba(255, 255, 255, 0.98)';
+                navbar.style.boxShadow = '0 2px 20px rgba(0, 0, 0, 0.1)';
+            } else {
+                navbar.style.background = 'rgba(255, 255, 255, 0.95)';
+                navbar.style.boxShadow = 'none';
+            }
+        });
+
+        const animateCounters = () => {
+            const counters = document.querySelectorAll('.stat-number');
+            counters.forEach(counter => {
+                const target = parseInt(counter.textContent);
+                const increment = target / 50;
+                let current = 0;
+                
+                const updateCounter = () => {
+                    if (current < target) {
+                        current += increment;
+                        counter.textContent = Math.ceil(current) + (counter.textContent.includes('%') ? '%' : '');
+                        requestAnimationFrame(updateCounter);
+                    } else {
+                        counter.textContent = target + (counter.textContent.includes('%') ? '%' : '');
+                    }
+                };
+                
+                updateCounter();
+            });
+        };
+
+        const statsObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    setTimeout(animateCounters, 500);
+                    statsObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.5 });
+
+        const statsSection = document.querySelector('.stats');
+        if (statsSection) {
+            statsObserver.observe(statsSection);
+        }
+    </script>
+</body>
+</html>
