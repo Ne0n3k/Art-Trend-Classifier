@@ -13,7 +13,21 @@ from albumentations.pytorch import ToTensorV2
 import cv2
 import numpy as np
 
-app = FastAPI(title="AI Art Critic", version="1.0.0")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    try:
+        load_model()
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        raise
+    yield
+    # Shutdown
+    print("Shutting down...")
+
+app = FastAPI(title="AI Art Critic", version="1.0.0", lifespan=lifespan)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -34,9 +48,20 @@ def load_model():
     # Load the trained model
     global model, class_names
     
-    model_path = "ml_model/model/model_best_82_73.pth"
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Model file not found: {model_path}")
+    # Try different paths for different execution contexts
+    possible_paths = [
+        "ml_model/model/model_best_82_73.pth",  # When run from project root
+        "../ml_model/model/model_best_82_73.pth"  # When run from backend/ directory
+    ]
+    
+    model_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            model_path = path
+            break
+    
+    if model_path is None:
+        raise FileNotFoundError(f"Model file not found in any of these locations: {possible_paths}")
     
     print(f"Loading model from {model_path}...")
     checkpoint = torch.load(model_path, map_location=device)
@@ -181,19 +206,15 @@ def generate_review(style: str, confidence: float) -> str:
     
     return f"{confidence_text}{style.replace('_', ' ').lower()}. {review}"
 
-@app.on_event("startup")
-async def startup_event():
-    # Load model on startup
-    try:
-        load_model()
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        raise
 
 @app.get("/")
 async def root():
     # Health check endpoint
     return {"message": "AI Art Critic API is running!", "classes": len(class_names)}
+
+@app.options("/analyze")
+async def analyze_options():
+    return {"message": "OK"}
 
 @app.post("/analyze")
 async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:

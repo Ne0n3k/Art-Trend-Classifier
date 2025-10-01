@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>Art Trend Classifier - AI Art Analysis</title>
     <style>
         * {
@@ -411,7 +415,7 @@
     </style>
 </head>
 <body>
-    <nav class="navbar">
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
         <div class="nav-container">
             <div class="logo">Art Trend Classifier</div>
             <ul class="nav-links">
@@ -423,15 +427,15 @@
         </div>
     </nav>
 
-    <section id="home" class="hero">
+    <section id="home" class="hero" role="banner" aria-label="Hero section">
         <div class="hero-content">
             <h1>AI Art Trend Classifier</h1>
             <p>Discover the artistic style of any artwork using advanced machine learning technology. Upload an image and get instant analysis with detailed reviews.</p>
-            <a href="index.html" class="cta-button">Try It Now</a>
+            <a href="index.html" class="cta-button" aria-label="Try the Art Trend Classifier application">Try It Now</a>
         </div>
     </section>
 
-    <section id="features" class="section">
+    <section id="features" class="section" role="region" aria-label="Features section">
         <h2 class="fade-in">Why Art Trend Classifier?</h2>
         <p class="fade-in">Our advanced machine learning model can identify 18 different art styles with high accuracy, providing detailed analysis and artistic reviews.</p>
         
@@ -563,11 +567,11 @@
         </div>
     </section>
 
-    <footer class="footer">
+    <footer class="footer" role="contentinfo" aria-label="Footer section">
         <div class="footer-content">
             <h3>Ready to Analyze Your Art?</h3>
             <p>Upload an artwork image and discover its artistic style with our AI-powered classifier.</p>
-            <a href="index.html" class="cta-button" style="margin-top: 1rem;">Start Analyzing</a>
+            <a href="index.html" class="cta-button" style="margin-top: 1rem;" aria-label="Start analyzing artwork">Start Analyzing</a>
         </div>
     </footer>
 
