@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     print("Shutting down...")
 
-app = FastAPI(title="AI Art Critic", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Art Trend Classifier", version="1.0.0", lifespan=lifespan)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -210,7 +210,7 @@ def generate_review(style: str, confidence: float) -> str:
 @app.get("/")
 async def root():
     # Health check endpoint
-    return {"message": "AI Art Critic API is running!", "classes": len(class_names)}
+    return {"message": "Art Trend Classifier API is running!", "classes": len(class_names)}
 
 @app.options("/analyze")
 async def analyze_options():
