@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>Art Trend Classifier</title>
     <style>
         * {
@@ -226,10 +230,13 @@
         <div class="header">
             <h1>Art Trand Classifier</h1>
             <p>Upload an artwork image and AI will analyze its style and write a review</p>
+            <button class="btn" onclick="window.location.href='landing.html'" style="margin-top: 15px;">
+                📖 Learn More About This Project
+            </button>
         </div>
 
-        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-            <div class="upload-icon">🖼️</div>
+        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()" role="button" tabindex="0" aria-label="Upload artwork image">
+            <div class="upload-icon" aria-hidden="true">🖼️</div>
             <div class="upload-text">Click or drag an image here</div>
             <div class="upload-subtext">Supported formats: JPG, PNG, JPEG</div>
         </div>
@@ -241,10 +248,10 @@
         </div>
 
         <div style="text-align: center;">
-            <button class="btn" id="analyzeBtn" onclick="analyzeImage()" disabled>
+            <button class="btn" id="analyzeBtn" onclick="analyzeImage()" disabled aria-label="Analyze uploaded artwork">
                 Analyze Artwork
             </button>
-            <button class="btn" onclick="clearResults()">Clear</button>
+            <button class="btn" onclick="clearResults()" aria-label="Clear results">Clear</button>
         </div>
 
         <div id="loading" class="loading" style="display: none;">
