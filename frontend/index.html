@@ -6,7 +6,8 @@
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-Frame-Options" content="DENY">
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <!-- CSP allows connection to Lambda Function URL and CloudFront -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://jahqz7jrwfpjkhcv5w3u6xsv6e0fmdrv.lambda-url.eu-north-1.on.aws https://d3hxkd3bumy7al.cloudfront.net; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>Art Trend Classifier</title>
     <style>
         * {
@@ -298,7 +299,8 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000';
+        // Lambda Function URL for API calls
+        const API_URL = 'https://jahqz7jrwfpjkhcv5w3u6xsv6e0fmdrv.lambda-url.eu-north-1.on.aws';
         let selectedFile = null;
 
         // File input handling
@@ -327,6 +329,7 @@
         });
 
         function handleFileSelect(event) {
+            // Handle file selection from input
             const file = event.target.files[0];
             if (file) {
                 handleFile(file);
@@ -334,6 +337,7 @@
         }
 
         function handleFile(file) {
+            // Process selected image file
             if (!file.type.startsWith('image/')) {
                 showError('Please select an image file (JPG, PNG, JPEG)');
                 return;
@@ -358,6 +362,7 @@
         }
 
         async function analyzeImage() {
+            // Send image to Lambda API for analysis
             if (!selectedFile) {
                 showError('Please select an image first');
                 return;
@@ -391,7 +396,7 @@
         }
 
         function displayResults(result) {
-            // Main prediction
+            // Display analysis results in UI
             document.getElementById('predictedStyle').textContent = 
                 result.predicted_style.replace(/_/g, ' ');
             

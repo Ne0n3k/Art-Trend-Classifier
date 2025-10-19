@@ -1,3 +1,4 @@
+# Backend API for Art Trend Classifier
 import os
 import io
 import torch
@@ -17,14 +18,13 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Load model on startup
     try:
         load_model()
     except Exception as e:
         print(f"Error loading model: {e}")
         raise
     yield
-    # Shutdown
     print("Shutting down...")
 
 app = FastAPI(title="Art Trend Classifier", version="1.0.0", lifespan=lifespan)
@@ -38,20 +38,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global variables for model
+# Global model state
 model = None
 class_names = []
 device = torch.device('cuda' if torch.cuda.is_available() else (
     'mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu'))
 
 def load_model():
-    # Load the trained model
+    """Load ResNet50 model with custom classifier head"""
     global model, class_names
     
     # Try different paths for different execution contexts
     possible_paths = [
-        "ml_model/model/model_best_82_73.pth",  # When run from project root
-        "../ml_model/model/model_best_82_73.pth"  # When run from backend/ directory
+        "ml_model/model/model_best_82_73.pth",  # Project root
+        "../ml_model/model/model_best_82_73.pth"  # Backend directory
     ]
     
     model_path = None
@@ -68,7 +68,7 @@ def load_model():
     class_names = checkpoint['class_names']
     num_classes = checkpoint['num_classes']
     
-    # Create model architecture
+    # Build ResNet50 with custom classifier
     model = models.resnet50(weights=None)
     in_features = model.fc.in_features
     model.fc = nn.Sequential(
@@ -82,7 +82,7 @@ def load_model():
     print(f"Model loaded successfully! Classes: {len(class_names)}")
 
 def get_transform():
-    # Get image preprocessing transform
+    """Image preprocessing pipeline"""
     return A.Compose([
         A.Resize(height=352, width=352),
         A.CenterCrop(height=320, width=320),
@@ -91,6 +91,7 @@ def get_transform():
     ])
 
 def generate_review(style: str, confidence: float) -> str:
+    """Generate AI review based on predicted style and confidence"""
     reviews = {
         "Impressionism": [
             "Soft light and blurred contours.",
@@ -209,7 +210,7 @@ def generate_review(style: str, confidence: float) -> str:
 
 @app.get("/")
 async def root():
-    # Health check endpoint
+    """Health check endpoint"""
     return {"message": "Art Trend Classifier API is running!", "classes": len(class_names)}
 
 @app.options("/analyze")
@@ -218,25 +219,22 @@ async def analyze_options():
 
 @app.post("/analyze")
 async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
-    # Analyze uploaded artwork image
+    """Analyze uploaded artwork image and return style prediction"""
     
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
     
     try:
-        # Read and preprocess image
+        # Preprocess image
         contents = await file.read()
         image = Image.open(io.BytesIO(contents)).convert('RGB')
-        
-        # Convert PIL to numpy for albumentations
         image_np = np.array(image)
         
-        # Apply transforms
+        # Apply transforms and predict
         transform = get_transform()
         transformed = transform(image=image_np)
         image_tensor = transformed['image'].unsqueeze(0).to(device)
         
-        # Make prediction
         with torch.no_grad():
             outputs = model(image_tensor)
             probabilities = torch.nn.functional.softmax(outputs, dim=1)
@@ -245,10 +243,10 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
             predicted_class = class_names[predicted.item()]
             confidence_score = confidence.item()
         
-        # Generate review
+        # Generate AI review
         review = generate_review(predicted_class, confidence_score)
         
-        # Get top 3 predictions
+        # Top 3 predictions
         top_probs, top_indices = torch.topk(probabilities, k=min(3, len(class_names)))
         top_predictions = []
         for prob, idx in zip(top_probs[0], top_indices[0]):
@@ -257,7 +255,7 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "confidence": float(prob.item())
             })
         
-        # Get all predictions (sorted by confidence)
+        # All predictions sorted by confidence
         all_probs, all_indices = torch.topk(probabilities, k=len(class_names))
         all_predictions = []
         for prob, idx in zip(all_probs[0], all_indices[0]):

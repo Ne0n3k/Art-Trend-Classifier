@@ -1,3 +1,4 @@
+# Model Testing and Inference Script
 import os
 import cv2
 import numpy as np
@@ -10,7 +11,7 @@ from albumentations.pytorch import ToTensorV2
 
 
 def load_model(model_path="ml_model/model/model_best_82_73.pth"):
-    # Load the trained ResNet50 model
+    """Load trained ResNet50 model from checkpoint"""
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model file not found: {model_path}")
     
@@ -33,7 +34,7 @@ def load_model(model_path="ml_model/model/model_best_82_73.pth"):
 
 
 def get_transform():
-    # Get image preprocessing transform
+    """Image preprocessing pipeline for inference"""
     return A.Compose([
         A.Resize(height=352, width=352),
         A.CenterCrop(height=320, width=320),
@@ -43,6 +44,7 @@ def get_transform():
 
 
 def predict_image(image_path, model, class_names, device='cpu'):
+    """Predict art style for single image"""
     image = cv2.imread(image_path)
     if image is None:
         raise ValueError(f"Could not load image: {image_path}")
@@ -75,7 +77,7 @@ def predict_image(image_path, model, class_names, device='cpu'):
 
 
 def test_on_sample_images():
-    # Test the model on sample images
+    """Test model on sample images from dataset"""
     device = torch.device('cuda' if torch.cuda.is_available() else (
         'mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu'))
     

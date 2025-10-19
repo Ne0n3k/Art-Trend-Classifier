@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Integration tests for Art Classifier API
 import requests
 import json
 import time
@@ -17,6 +18,7 @@ class IntegrationTester:
         self.results = []
         
     def start_backend(self) -> bool:
+        """Start backend server for testing"""
         print("Starting backend server...")
         try:
             os.system("lsof -ti:8000 | xargs kill -9 2>/dev/null || true")
@@ -52,6 +54,7 @@ class IntegrationTester:
             print("Backend server stopped")
     
     def test_health_endpoint(self) -> bool:
+        """Test API health endpoint"""
         print("\nTesting health endpoint...")
         try:
             response = requests.get(f"{self.base_url}/", timeout=10)
@@ -71,6 +74,7 @@ class IntegrationTester:
             return False
     
     def test_image_analysis(self, image_path: Path) -> bool:
+        """Test image analysis endpoint with sample image"""
         print(f"\nTesting image analysis: {image_path.name}")
         try:
             with open(image_path, 'rb') as f:

@@ -1,0 +1,75 @@
+name: Deploy Backend (Lambda Container Image)
+
+on:
+  push:
+    paths:
+      - 'lambda/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for arm64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set IMAGE_URI
+        run: |
+          echo "ECR_REGISTRY=${{ steps.ecr.outputs.registry }}" >> $GITHUB_ENV
+          echo "IMAGE_URI=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest" >> $GITHUB_ENV
+
+      - name: Build and push image (linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./lambda
+          file: ./lambda/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_URI }}
+          provenance: false
+
+      - name: Update Lambda to new image
+        uses: aws-actions/aws-cli-action@v2
+        with:
+          awscliv2: true
+          command: >-
+            aws lambda update-function-code
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}"
+            --image-uri "${{ env.IMAGE_URI }}"
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Wait for function updated
+        uses: aws-actions/aws-cli-action@v2
+        with:
+          awscliv2: true
+          command: >-
+            aws lambda wait function-updated
+            --function-name "${{ env.LAMBDA_FUNCTION_NAME }}"
+            --region "${{ env.AWS_REGION }}"
+
+
