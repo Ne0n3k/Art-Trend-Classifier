@@ -6,19 +6,30 @@ import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 import uvicorn
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from typing import Dict, Any
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import cv2
 import numpy as np
+import logging
+import time
+import json
 
 from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,6 +43,18 @@ async def lifespan(app: FastAPI):
     print("Shutting down...")
 
 app = FastAPI(title="Art Trend Classifier", version="1.0.0", lifespan=lifespan)
+
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # Rate limiting configuration
 limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
@@ -94,14 +117,30 @@ def load_model():
     model.eval()
     print(f"Model loaded successfully! Classes: {len(class_names)}")
 
-def get_transform():
-    """Image preprocessing pipeline"""
-    return A.Compose([
-        A.Resize(height=352, width=352),
-        A.CenterCrop(height=320, width=320),
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ToTensorV2(),
-    ])
+# Pre-compiled transform for better performance
+TRANSFORM = A.Compose([
+    A.Resize(height=352, width=352),
+    A.CenterCrop(height=320, width=320),
+    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+    ToTensorV2(),
+])
+
+def validate_image_dimensions(image: Image.Image) -> None:
+    """Validate image dimensions to prevent DoS attacks"""
+    width, height = image.size
+    max_dimension = 8192  # 8K limit
+    
+    if width > max_dimension or height > max_dimension:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Image too large. Maximum dimension: {max_dimension}px. Got: {width}x{height}"
+        )
+    
+    if width < 32 or height < 32:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Image too small. Minimum dimension: 32px. Got: {width}x{height}"
+        )
 
 def generate_review(style: str, confidence: float) -> str:
     """Generate AI review based on predicted style and confidence"""
@@ -235,7 +274,10 @@ async def analyze_options():
 @limiter.limit("10/minute", methods=["POST"])
 async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
     """Analyze uploaded artwork image and return style prediction"""
-
+    
+    # Structured logging: start analysis
+    start_time = time.time()
+    
     # Comprehensive input validation
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -243,10 +285,10 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
     if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
 
-    # Validate file size (max 10MB)
-    file_size = 0
+    # Single file read - validate size and get content
     content = await file.read()
     file_size = len(content)
+    
     if file_size > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 10MB)")
 
@@ -258,21 +300,30 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
     if file.content_type.lower() not in allowed_types:
         raise HTTPException(status_code=400, detail=f"Unsupported image format. Allowed: {', '.join(allowed_types)}")
 
-    # Reset file pointer for further processing
-    import io
-    file.file = io.BytesIO(content)
+    # Log analysis start
+    logger.info("Analysis started", extra={
+        "event": "analysis_started",
+        "filename": file.filename,
+        "file_size_bytes": file_size,
+        "content_type": file.content_type,
+        "timestamp": start_time
+    })
     
     try:
-        # Preprocess image
-        contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert('RGB')
+        # Process image from content (single read)
+        image = Image.open(io.BytesIO(content)).convert('RGB')
+        
+        # Validate image dimensions
+        validate_image_dimensions(image)
+        
         image_np = np.array(image)
         
         # Apply transforms and predict
-        transform = get_transform()
-        transformed = transform(image=image_np)
+        transformed = TRANSFORM(image=image_np)
         image_tensor = transformed['image'].unsqueeze(0).to(device)
         
+        # Inference timing
+        inference_start = time.time()
         with torch.no_grad():
             outputs = model(image_tensor)
             probabilities = torch.nn.functional.softmax(outputs, dim=1)
@@ -280,6 +331,9 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
             
             predicted_class = class_names[predicted.item()]
             confidence_score = confidence.item()
+        
+        inference_time = time.time() - inference_start
+        total_time = time.time() - start_time
         
         # Generate AI review
         review = generate_review(predicted_class, confidence_score)
@@ -302,6 +356,19 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
                 "confidence": float(prob.item())
             })
         
+        # Structured logging: successful analysis
+        logger.info("Analysis completed", extra={
+            "event": "analysis_completed",
+            "filename": file.filename,
+            "predicted_class": predicted_class,
+            "confidence": confidence_score,
+            "inference_time_ms": round(inference_time * 1000, 2),
+            "total_time_ms": round(total_time * 1000, 2),
+            "file_size_bytes": file_size,
+            "image_dimensions": f"{image.width}x{image.height}",
+            "success": True
+        })
+        
         return {
             "predicted_style": predicted_class,
             "confidence": confidence_score,
@@ -311,7 +378,19 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
             "filename": file.filename
         }
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (validation errors)
+        raise
     except Exception as e:
+        # Structured logging: analysis failed
+        logger.error("Analysis failed", extra={
+            "event": "analysis_failed",
+            "filename": file.filename,
+            "error": str(e),
+            "file_size_bytes": file_size,
+            "total_time_ms": round((time.time() - start_time) * 1000, 2),
+            "success": False
+        })
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 if __name__ == "__main__":
