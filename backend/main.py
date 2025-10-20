@@ -15,6 +15,10 @@ import cv2
 import numpy as np
 
 from contextlib import asynccontextmanager
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,13 +33,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Art Trend Classifier", version="1.0.0", lifespan=lifespan)
 
-# Enable CORS for frontend
+# Rate limiting configuration
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Enable CORS for frontend - RESTRICTED origins only
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://d3hxkd3bumy7al.cloudfront.net",  # Production domain
+    ],
+    allow_credentials=False,  # Disabled for security
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Global model state
@@ -209,6 +222,7 @@ def generate_review(style: str, confidence: float) -> str:
 
 
 @app.get("/")
+@limiter.limit("30/minute")
 async def root():
     """Health check endpoint"""
     return {"message": "Art Trend Classifier API is running!", "classes": len(class_names)}
@@ -218,11 +232,35 @@ async def analyze_options():
     return {"message": "OK"}
 
 @app.post("/analyze")
+@limiter.limit("10/minute", methods=["POST"])
 async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
     """Analyze uploaded artwork image and return style prediction"""
-    
-    if not file.content_type.startswith('image/'):
+
+    # Comprehensive input validation
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    if not file.content_type or not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="File must be an image")
+
+    # Validate file size (max 10MB)
+    file_size = 0
+    content = await file.read()
+    file_size = len(content)
+    if file_size > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+
+    if file_size < 1024:  # min 1KB
+        raise HTTPException(status_code=400, detail="File too small")
+
+    # Validate image format more strictly
+    allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if file.content_type.lower() not in allowed_types:
+        raise HTTPException(status_code=400, detail=f"Unsupported image format. Allowed: {', '.join(allowed_types)}")
+
+    # Reset file pointer for further processing
+    import io
+    file.file = io.BytesIO(content)
     
     try:
         # Preprocess image

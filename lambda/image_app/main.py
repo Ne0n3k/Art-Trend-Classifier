@@ -10,6 +10,9 @@ import json
 import os
 import tempfile
 from PIL import Image
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Torch imports are optional; container includes them. If import fails, we fall back to mock.
 try:
@@ -25,17 +28,22 @@ except Exception:  # pragma: no cover
 
 app = FastAPI(title="Art Classifier")
 
-# CORS: allow localhost and any S3 website/CloudFront endpoint
+# Rate limiting configuration
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS: RESTRICTED to specific origins only
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "https://d3hxkd3bumy7al.cloudfront.net",  # Production domain
     ],
-    allow_origin_regex=r"^https?://([a-z0-9-]+\.s3-website\.[a-z0-9-]+\.amazonaws\.com|[a-z0-9.-]+\.cloudfront\.net)$",
-    allow_credentials=True,
+    allow_credentials=False,  # Disabled for security
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"]
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -125,6 +133,7 @@ def _preprocess(pil_image: Image.Image):
 
 # -------- Routes --------
 @app.get("/")
+@limiter.limit("30/minute")
 async def root():
     """Health check endpoint"""
     return {"message": "ok", "model_ready": _model is not None, "classes": len(_class_names)}
@@ -169,10 +178,34 @@ def _mock_response(file_name: str) -> Dict[str, Any]:
 
 
 @app.post("/analyze")
+@limiter.limit("10/minute", methods=["POST"])
 async def analyze(file: UploadFile = File(...)):
     """Analyze uploaded image and return art style prediction"""
+
+    # Comprehensive input validation
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
+
+    # Validate file size (max 10MB)
+    file_size = 0
+    content = await file.read()
+    file_size = len(content)
+    if file_size > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+
+    if file_size < 1024:  # min 1KB
+        raise HTTPException(status_code=400, detail="File too small")
+
+    # Validate image format more strictly
+    allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if file.content_type.lower() not in allowed_types:
+        raise HTTPException(status_code=400, detail=f"Unsupported image format. Allowed: {', '.join(allowed_types)}")
+
+    # Reset file pointer for further processing
+    file.file = io.BytesIO(content)
 
     # Ensure model is available; if not, return an error (no mock fallback)
     _load_model_if_needed()
