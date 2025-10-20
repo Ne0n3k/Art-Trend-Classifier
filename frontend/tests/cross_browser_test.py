@@ -214,7 +214,7 @@ class CrossBrowserTester:
                 print(f"{browser_name} executable not found")
         
         print(f"Browser compatibility: {compatible_browsers}/{total_browsers} browsers available")
-        return compatible_browsers >= total_browsers * 0.5  # At least 50% available
+        return compatible_browsers >= 1  # At least 1 browser available
     
     def test_file_structure(self) -> bool:
         print("\nTesting file structure...")

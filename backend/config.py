@@ -32,6 +32,7 @@ class APIConfig:
     ALLOWED_MIME_TYPES: List[str] = None
     CORS_ORIGINS: List[str] = None
     RATE_LIMITS: Dict[str, str] = None
+    DISABLE_RATE_LIMITS: bool = False
     
     def __post_init__(self):
         if self.ALLOWED_MIME_TYPES is None:
@@ -47,11 +48,23 @@ class APIConfig:
             ]
         
         if self.RATE_LIMITS is None:
-            self.RATE_LIMITS = {
-                "default": "200 per day, 50 per hour",
-                "root": "30/minute",
-                "analyze": "10/minute"  # Restored original limit
-            }
+            # Check if we're in test mode
+            import os
+            self.DISABLE_RATE_LIMITS = os.getenv('DISABLE_RATE_LIMITS', 'false').lower() == 'true'
+            
+            if self.DISABLE_RATE_LIMITS:
+                # Very high limits for testing
+                self.RATE_LIMITS = {
+                    "default": "10000 per day, 1000 per hour",
+                    "root": "1000/minute",
+                    "analyze": "1000/minute"
+                }
+            else:
+                self.RATE_LIMITS = {
+                    "default": "200 per day, 50 per hour",
+                    "root": "30/minute",
+                    "analyze": "10/minute"  # Restored original limit
+                }
 
 # Global configuration instances
 IMAGE_LIMITS = ImageLimits()
