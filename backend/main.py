@@ -33,6 +33,8 @@ async def lifespan(app: FastAPI):
     # Load model on startup
     try:
         load_model()
+        print(f"Model loaded in lifespan: {model is not None}")
+        print(f"Class names loaded in lifespan: {len(class_names)}")
     except Exception as e:
         print(f"Error loading model: {e}")
         raise
@@ -133,21 +135,29 @@ async def analyze_artwork(request: Request, file: UploadFile = File(...)) -> Dic
     """Analyze uploaded artwork image and return style prediction"""
     
     try:
+        print(f"Model available: {model is not None}")
+        print(f"Class names available: {len(class_names)}")
+        
         # Validate input and get content
         content, file_size = await validate_file_input(file)
+        print(f"File validated, size: {file_size}")
         
         # Process image
         image = process_image_from_content(content)
         image_np = np.array(image)
+        print(f"Image processed, shape: {image_np.shape}")
         
         # Apply transforms and predict
         transformed = TRANSFORM(image=image_np)
         image_tensor = transformed['image'].unsqueeze(0).to(device)
+        print(f"Tensor created, shape: {image_tensor.shape}, device: {image_tensor.device}")
         
         # Inference timing
         inference_start = time.time()
+        print(f"Starting inference with model: {model is not None}")
         with torch.no_grad():
             outputs = model(image_tensor)
+            print(f"Inference completed, output shape: {outputs.shape}")
             probabilities = torch.nn.functional.softmax(outputs, dim=1)
             confidence, predicted = torch.max(probabilities, 1)
             
@@ -173,11 +183,15 @@ async def analyze_artwork(request: Request, file: UploadFile = File(...)) -> Dic
         review = generate_review(predicted_class, confidence_score)
         
         # Log success
-        with AnalysisLogger(logger, file.filename, file_size) as analysis_logger:
-            analysis_logger.log_success(
-                predicted_class, confidence_score, 
-                inference_time * 1000, f"{image.width}x{image.height}"
-            )
+        try:
+            with AnalysisLogger(logger, file.filename, file_size) as analysis_logger:
+                analysis_logger.log_success(
+                    predicted_class, confidence_score, 
+                    inference_time * 1000, f"{image.width}x{image.height}"
+                )
+        except Exception as log_error:
+            print(f"Logging error: {log_error}")
+            # Continue without logging
         
         return {
             "predicted_style": predicted_class,

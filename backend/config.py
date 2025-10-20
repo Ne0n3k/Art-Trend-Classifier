@@ -50,7 +50,7 @@ class APIConfig:
             self.RATE_LIMITS = {
                 "default": "200 per day, 50 per hour",
                 "root": "30/minute",
-                "analyze": "10/minute"
+                "analyze": "100/minute"  # Increased for testing
             }
 
 # Global configuration instances

@@ -24,8 +24,10 @@ class IntegrationTester:
             os.system("lsof -ti:8000 | xargs kill -9 2>/dev/null || true")
             time.sleep(2)
             backend_dir = os.path.join(os.path.dirname(__file__), "..")
+            # Use the same Python interpreter as the test
+            python_path = sys.executable
             self.backend_process = subprocess.Popen([
-                sys.executable, "main.py"
+                python_path, "main.py"
             ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=backend_dir)
             
             # Wait for server
@@ -73,8 +75,10 @@ class IntegrationTester:
             print(f"Health check error: {e}")
             return False
     
-    def test_image_analysis(self, image_path: Path) -> bool:
+    def test_image_analysis(self, image_path) -> bool:
         """Test image analysis endpoint with sample image"""
+        if isinstance(image_path, str):
+            image_path = Path(image_path)
         print(f"\nTesting image analysis: {image_path.name}")
         try:
             with open(image_path, 'rb') as f:

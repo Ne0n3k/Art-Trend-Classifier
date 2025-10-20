@@ -43,7 +43,7 @@ class AnalysisLogger:
         """Log analysis start"""
         log_data = {
             "event": "analysis_started",
-            "filename": self.filename,
+            "file_name": self.filename,  # Changed from 'filename' to avoid LogRecord conflict
             "file_size_bytes": self.file_size,
             "timestamp": self.start_time
         }
@@ -55,7 +55,7 @@ class AnalysisLogger:
         total_time = time.time() - self.start_time
         log_data = {
             "event": "analysis_completed",
-            "filename": self.filename,
+            "file_name": self.filename,  # Changed from 'filename' to avoid LogRecord conflict
             "predicted_class": predicted_class,
             "confidence": confidence,
             "inference_time_ms": round(inference_time_ms, 2),
@@ -71,7 +71,7 @@ class AnalysisLogger:
         total_time = time.time() - self.start_time
         log_data = {
             "event": "analysis_failed",
-            "filename": self.filename,
+            "file_name": self.filename,  # Changed from 'filename' to avoid LogRecord conflict
             "error": error,
             "file_size_bytes": self.file_size,
             "total_time_ms": round(total_time * 1000, 2),
