@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Integration tests for Art Classifier API
 import requests
 import json
 import time
@@ -17,13 +18,16 @@ class IntegrationTester:
         self.results = []
         
     def start_backend(self) -> bool:
+        """Start backend server for testing"""
         print("Starting backend server...")
         try:
             os.system("lsof -ti:8000 | xargs kill -9 2>/dev/null || true")
             time.sleep(2)
             backend_dir = os.path.join(os.path.dirname(__file__), "..")
+            # Use the same Python interpreter as the test
+            python_path = sys.executable
             self.backend_process = subprocess.Popen([
-                sys.executable, "main.py"
+                python_path, "main.py"
             ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=backend_dir)
             
             # Wait for server
@@ -52,6 +56,7 @@ class IntegrationTester:
             print("Backend server stopped")
     
     def test_health_endpoint(self) -> bool:
+        """Test API health endpoint"""
         print("\nTesting health endpoint...")
         try:
             response = requests.get(f"{self.base_url}/", timeout=10)
@@ -70,7 +75,10 @@ class IntegrationTester:
             print(f"Health check error: {e}")
             return False
     
-    def test_image_analysis(self, image_path: Path) -> bool:
+    def test_image_analysis(self, image_path) -> bool:
+        """Test image analysis endpoint with sample image"""
+        if isinstance(image_path, str):
+            image_path = Path(image_path)
         print(f"\nTesting image analysis: {image_path.name}")
         try:
             with open(image_path, 'rb') as f:

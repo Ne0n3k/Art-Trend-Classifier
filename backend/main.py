@@ -1,3 +1,4 @@
+# Backend API for Art Trend Classifier
 import os
 import io
 import torch
@@ -5,53 +6,79 @@ import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 import uvicorn
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-import cv2
 import numpy as np
+import time
 
 from contextlib import asynccontextmanager
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+# Import our refactored modules
+from config import IMAGE_LIMITS, SECURITY_CONFIG, API_CONFIG
+from validation import validate_file_input, process_image_from_content, ValidationError
+from reviews import generate_review
+from logging_utils import setup_logging, AnalysisLogger
+
+# Setup logging
+logger = setup_logging(is_lambda=False)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Load model on startup
     try:
         load_model()
+        print(f"Model loaded in lifespan: {model is not None}")
+        print(f"Class names loaded in lifespan: {len(class_names)}")
     except Exception as e:
         print(f"Error loading model: {e}")
         raise
     yield
-    # Shutdown
     print("Shutting down...")
 
 app = FastAPI(title="Art Trend Classifier", version="1.0.0", lifespan=lifespan)
 
-# Enable CORS for frontend
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in SECURITY_CONFIG.HEADERS.items():
+        response.headers[header] = value
+    return response
+
+# Rate limiting configuration
+limiter = Limiter(key_func=get_remote_address, default_limits=[API_CONFIG.RATE_LIMITS["default"]])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Enable CORS for frontend - RESTRICTED origins only
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=API_CONFIG.CORS_ORIGINS,
+    allow_credentials=False,  # Disabled for security
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-# Global variables for model
+# Global model state
 model = None
 class_names = []
 device = torch.device('cuda' if torch.cuda.is_available() else (
     'mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu'))
 
 def load_model():
-    # Load the trained model
+    """Load ResNet50 model with custom classifier head"""
     global model, class_names
     
     # Try different paths for different execution contexts
     possible_paths = [
-        "ml_model/model/model_best_82_73.pth",  # When run from project root
-        "../ml_model/model/model_best_82_73.pth"  # When run from backend/ directory
+        "ml_model/model/model_best_82_73.pth",  # Project root
+        "../ml_model/model/model_best_82_73.pth"  # Backend directory
     ]
     
     model_path = None
@@ -68,7 +95,7 @@ def load_model():
     class_names = checkpoint['class_names']
     num_classes = checkpoint['num_classes']
     
-    # Create model architecture
+    # Build ResNet50 with custom classifier
     model = models.resnet50(weights=None)
     in_features = model.fc.in_features
     model.fc = nn.Sequential(
@@ -81,135 +108,21 @@ def load_model():
     model.eval()
     print(f"Model loaded successfully! Classes: {len(class_names)}")
 
-def get_transform():
-    # Get image preprocessing transform
-    return A.Compose([
-        A.Resize(height=352, width=352),
-        A.CenterCrop(height=320, width=320),
-        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ToTensorV2(),
-    ])
+# Pre-compiled transform for better performance
+TRANSFORM = A.Compose([
+    A.Resize(height=352, width=352),
+    A.CenterCrop(height=320, width=320),
+    A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+    ToTensorV2(),
+])
 
-def generate_review(style: str, confidence: float) -> str:
-    reviews = {
-        "Impressionism": [
-            "Soft light and blurred contours.",
-            "Bright colors and fleeting impressions.",
-            "Romantic play of light and shadow."
-        ],
-        "Post_Impressionism": [
-            "Stronger contrasts and expression.",
-            "Saturated colors and symbolism.",
-            "Evolution from impressionism."
-        ],
-        "Expressionism": [
-            "Intense colors and emotions.",
-            "Distorted forms and drama.",
-            "Artist's inner experiences."
-        ],
-        "Cubism": [
-            "Geometric forms and fragmentation.",
-            "Multi-perspective view of subject.",
-            "Analytical breakdown of reality."
-        ],
-        "Abstract_Expressionism": [
-            "Pure abstraction and spontaneity.",
-            "Expressive brush gesture.",
-            "Emotions through abstract forms."
-        ],
-        "Fauvism": [
-            "Wildness and color intensity.",
-            "Unnatural color combinations.",
-            "Expressive use of color."
-        ],
-        "Pop_Art": [
-            "Bright colors and contrasts.",
-            "Popular culture in art.",
-            "Commercial aesthetics transformed."
-        ],
-        "Minimalism": [
-            "Reduction to essence.",
-            "Simplicity and purity of form.",
-            "Less is more."
-        ],
-        "Color_Field_Painting": [
-            "Large color planes.",
-            "Meditative composition.",
-            "Peace through uniformity."
-        ],
-        "Art_Nouveau_Modern": [
-            "Organic flowing forms.",
-            "Decorative elegance.",
-            "Nature-inspired designs."
-        ],
-        "Symbolism": [
-            "Hidden meanings and symbols.",
-            "Mysterious atmosphere.",
-            "Expression of spiritual ideas."
-        ],
-        "Romanticism": [
-            "Emotion over rationality.",
-            "Melancholy and nature.",
-            "Cult of feeling."
-        ],
-        "Baroque": [
-            "Theatricality and opulence.",
-            "Dynamic composition.",
-            "Rich details."
-        ],
-        "Rococo": [
-            "Delicacy and grace.",
-            "Pastel colors.",
-            "Aristocratic elegance."
-        ],
-        "Northern_Renaissance": [
-            "Precision and realism.",
-            "Attention to detail.",
-            "Religious symbolism."
-        ],
-        "High_Renaissance": [
-            "Classical harmony.",
-            "Technical perfection.",
-            "Idealization of form."
-        ],
-        "Naive_Art_Primitivism": [
-            "Naive spontaneity.",
-            "Direct expression.",
-            "Authenticity of art."
-        ],
-        "Ukiyo_e": [
-            "Japanese woodblock print.",
-            "Flat colors.",
-            "Fleeting beauty."
-        ]
-    }
-    
-    # Select review based on confidence
-    style_reviews = reviews.get(style, ["Interesting work with unique artistic character."])
-    
-    if confidence > 0.8:
-        review = style_reviews[0]
-    elif confidence > 0.6:
-        review = style_reviews[1] if len(style_reviews) > 1 else style_reviews[0]
-    else:
-        review = style_reviews[-1] if len(style_reviews) > 2 else style_reviews[0]
-    
-    # Add confidence-based modifier
-    if confidence > 0.9:
-        confidence_text = "Analysis with very high confidence indicates "
-    elif confidence > 0.7:
-        confidence_text = "With high confidence we can state that "
-    elif confidence > 0.5:
-        confidence_text = "We probably have "
-    else:
-        confidence_text = "The work may represent "
-    
-    return f"{confidence_text}{style.replace('_', ' ').lower()}. {review}"
+# Review generation moved to reviews.py module
 
 
 @app.get("/")
-async def root():
-    # Health check endpoint
+@limiter.limit("30/minute")
+async def root(request: Request):
+    """Health check endpoint"""
     return {"message": "Art Trend Classifier API is running!", "classes": len(class_names)}
 
 @app.options("/analyze")
@@ -217,54 +130,68 @@ async def analyze_options():
     return {"message": "OK"}
 
 @app.post("/analyze")
-async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
-    # Analyze uploaded artwork image
-    
-    if not file.content_type.startswith('image/'):
-        raise HTTPException(status_code=400, detail="File must be an image")
+@limiter.limit(API_CONFIG.RATE_LIMITS["analyze"], methods=["POST"])
+async def analyze_artwork(request: Request, file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Analyze uploaded artwork image and return style prediction"""
     
     try:
-        # Read and preprocess image
-        contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert('RGB')
+        print(f"Model available: {model is not None}")
+        print(f"Class names available: {len(class_names)}")
         
-        # Convert PIL to numpy for albumentations
+        # Validate input and get content
+        content, file_size = await validate_file_input(file)
+        print(f"File validated, size: {file_size}")
+        
+        # Process image
+        image = process_image_from_content(content)
         image_np = np.array(image)
+        print(f"Image processed, shape: {image_np.shape}")
         
-        # Apply transforms
-        transform = get_transform()
-        transformed = transform(image=image_np)
+        # Apply transforms and predict
+        transformed = TRANSFORM(image=image_np)
         image_tensor = transformed['image'].unsqueeze(0).to(device)
+        print(f"Tensor created, shape: {image_tensor.shape}, device: {image_tensor.device}")
         
-        # Make prediction
+        # Inference timing
+        inference_start = time.time()
+        print(f"Starting inference with model: {model is not None}")
         with torch.no_grad():
             outputs = model(image_tensor)
+            print(f"Inference completed, output shape: {outputs.shape}")
             probabilities = torch.nn.functional.softmax(outputs, dim=1)
             confidence, predicted = torch.max(probabilities, 1)
             
             predicted_class = class_names[predicted.item()]
             confidence_score = confidence.item()
         
-        # Generate review
+        inference_time = time.time() - inference_start
+        
+        # Generate predictions
+        top_probs, top_indices = torch.topk(probabilities, k=min(3, len(class_names)))
+        top_predictions = [
+            {"style": class_names[idx.item()], "confidence": float(prob.item())}
+            for prob, idx in zip(top_probs[0], top_indices[0])
+        ]
+        
+        all_probs, all_indices = torch.topk(probabilities, k=len(class_names))
+        all_predictions = [
+            {"style": class_names[idx.item()], "confidence": float(prob.item())}
+            for prob, idx in zip(all_probs[0], all_indices[0])
+        ]
+        
+        # Generate AI review
         review = generate_review(predicted_class, confidence_score)
         
-        # Get top 3 predictions
-        top_probs, top_indices = torch.topk(probabilities, k=min(3, len(class_names)))
-        top_predictions = []
-        for prob, idx in zip(top_probs[0], top_indices[0]):
-            top_predictions.append({
-                "style": class_names[idx.item()],
-                "confidence": float(prob.item())
-            })
-        
-        # Get all predictions (sorted by confidence)
-        all_probs, all_indices = torch.topk(probabilities, k=len(class_names))
-        all_predictions = []
-        for prob, idx in zip(all_probs[0], all_indices[0]):
-            all_predictions.append({
-                "style": class_names[idx.item()],
-                "confidence": float(prob.item())
-            })
+        # Log success
+        try:
+            with AnalysisLogger(logger, file.filename, file_size) as analysis_logger:
+                analysis_logger.log_success(
+                    predicted_class, confidence_score, 
+                    inference_time * 1000, f"{image.width}x{image.height}"
+                )
+        except Exception as log_error:
+            print(f"Logging error: {log_error}")
+            # Continue without logging
         
         return {
             "predicted_style": predicted_class,
@@ -275,7 +202,14 @@ async def analyze_artwork(file: UploadFile = File(...)) -> Dict[str, Any]:
             "filename": file.filename
         }
         
+    except ValidationError:
+        # Re-raise validation errors
+        raise
     except Exception as e:
+        # Log and handle other errors
+        file_size = getattr(file, 'size', 0) if hasattr(file, 'size') else 0
+        with AnalysisLogger(logger, file.filename if file else "unknown", file_size) as analysis_logger:
+            analysis_logger.log_error(str(e))
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 if __name__ == "__main__":

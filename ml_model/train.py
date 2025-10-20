@@ -1,3 +1,4 @@
+# Art Style Classification Training Script
 import os
 import time
 import math
@@ -13,6 +14,7 @@ from dataset import create_dataloaders
 
 
 def mixup_batch(images: torch.Tensor, labels: torch.Tensor, alpha: float = 0.2):
+    """Mixup data augmentation technique"""
     if alpha <= 0:
         return images, labels, labels, 1.0
     beta = torch.distributions.Beta(torch.tensor([alpha]), torch.tensor([alpha]))
@@ -25,6 +27,7 @@ def mixup_batch(images: torch.Tensor, labels: torch.Tensor, alpha: float = 0.2):
 
 
 def rand_bbox(width: int, height: int, lam: float):
+    """Generate random bounding box for CutMix"""
     cut_ratio = math.sqrt(1.0 - lam)
     cut_w = int(width * cut_ratio)
     cut_h = int(height * cut_ratio)
@@ -40,6 +43,7 @@ def rand_bbox(width: int, height: int, lam: float):
 
 
 def cutmix_batch(images: torch.Tensor, labels: torch.Tensor, alpha: float = 0.2):
+    """CutMix data augmentation technique"""
     if alpha <= 0:
         return images, labels, labels, 1.0
     beta = torch.distributions.Beta(torch.tensor([alpha]), torch.tensor([alpha]))
@@ -54,6 +58,7 @@ def cutmix_batch(images: torch.Tensor, labels: torch.Tensor, alpha: float = 0.2)
 
 
 def train():
+    """Main training function with ResNet50 and advanced techniques"""
     base_dir = "data/wikiart"
     batch_size = 16
     num_workers = 0

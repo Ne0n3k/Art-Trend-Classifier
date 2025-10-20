@@ -1,3 +1,4 @@
+# Dataset and DataLoader Implementation
 import os
 from typing import Tuple, List, Optional, Dict
 
@@ -46,6 +47,7 @@ class ArtDataset(Dataset):
 
 
 def get_transforms(image_size: int = 224) -> Tuple[A.Compose, A.Compose]:
+    """Get training and validation transforms"""
     resize_size = max(352, image_size)
 
     train_transform = A.Compose([
@@ -73,6 +75,7 @@ def get_transforms(image_size: int = 224) -> Tuple[A.Compose, A.Compose]:
 
 
 def _count_images_per_class(base_dir: str, class_names: List[str]) -> Dict[str, int]:
+    """Count images per class for dataset analysis"""
     counts: Dict[str, int] = {}
     for name in class_names:
         class_dir = os.path.join(base_dir, name)
@@ -86,6 +89,7 @@ def _count_images_per_class(base_dir: str, class_names: List[str]) -> Dict[str, 
 
 
 def create_dataloaders(base_dir: str, batch_size: int = 16, num_workers: int = 2, image_size: int = 224, top_k: Optional[int] = None, selected_classes: Optional[List[str]] = None):
+    """Create train/val/test dataloaders with stratified split"""
     classes = sorted([d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))])
     if selected_classes is not None and len(selected_classes) > 0:
         selected_set = set(selected_classes)
