@@ -1,7 +1,12 @@
 {
-  "AllowOrigins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+  "AllowOrigins": [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://d3hxkd3bumy7al.cloudfront.net"
+  ],
   "AllowMethods": ["GET", "POST", "OPTIONS"],
-  "AllowHeaders": ["*"],
-  "ExposeHeaders": ["*"],
-  "AllowCredentials": true
+  "AllowHeaders": ["Content-Type", "Authorization"],
+  "ExposeHeaders": [],
+  "AllowCredentials": false,
+  "MaxAge": 86400
 }
