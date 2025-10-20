@@ -16,9 +16,16 @@ from slowapi.errors import RateLimitExceeded
 import logging
 import time
 
+# Import shared modules (copy to lambda directory)
+import sys
+sys.path.append('/opt/python')
+from config import IMAGE_LIMITS, API_CONFIG
+from validation import validate_file_input, process_image_from_content, ValidationError
+from reviews import generate_review
+from logging_utils import setup_logging, AnalysisLogger
+
 # Configure logging for Lambda
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = setup_logging(is_lambda=True)
 
 # Torch imports are optional; container includes them. If import fails, we fall back to mock.
 try:
@@ -35,18 +42,14 @@ except Exception:  # pragma: no cover
 app = FastAPI(title="Art Classifier")
 
 # Rate limiting configuration
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+limiter = Limiter(key_func=get_remote_address, default_limits=[API_CONFIG.RATE_LIMITS["default"]])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS: RESTRICTED to specific origins only
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://d3hxkd3bumy7al.cloudfront.net",  # Production domain
-    ],
+    allow_origins=API_CONFIG.CORS_ORIGINS,
     allow_credentials=False,  # Disabled for security
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
@@ -124,22 +127,7 @@ def _load_model_if_needed() -> None:
         _model_loaded_error = f"Load error: {e}"
 
 
-def _validate_image_dimensions(image: Image.Image) -> None:
-    """Validate image dimensions to prevent DoS attacks"""
-    width, height = image.size
-    max_dimension = 8192  # 8K limit
-    
-    if width > max_dimension or height > max_dimension:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Image too large. Maximum dimension: {max_dimension}px. Got: {width}x{height}"
-        )
-    
-    if width < 32 or height < 32:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Image too small. Minimum dimension: 32px. Got: {width}x{height}"
-        )
+# Validation functions moved to validation.py module
 
 
 # -------- Routes --------
@@ -189,76 +177,26 @@ def _mock_response(file_name: str) -> Dict[str, Any]:
 
 
 @app.post("/analyze")
-@limiter.limit("10/minute", methods=["POST"])
+@limiter.limit(API_CONFIG.RATE_LIMITS["analyze"], methods=["POST"])
 async def analyze(file: UploadFile = File(...)):
     """Analyze uploaded image and return art style prediction"""
 
-    # Structured logging: start analysis
-    start_time = time.time()
-
-    # Comprehensive input validation
-    if not file or not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
-
-    # Single file read - validate size and get content
-    content = await file.read()
-    file_size = len(content)
-    
-    if file_size > 10 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large (max 10MB)")
-
-    if file_size < 1024:  # min 1KB
-        raise HTTPException(status_code=400, detail="File too small")
-
-    # Validate image format more strictly
-    allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
-    if file.content_type.lower() not in allowed_types:
-        raise HTTPException(status_code=400, detail=f"Unsupported image format. Allowed: {', '.join(allowed_types)}")
-
-    # Log analysis start
-    logger.info(json.dumps({
-        "event": "lambda_analysis_started",
-        "filename": file.filename,
-        "file_size_bytes": file_size,
-        "content_type": file.content_type,
-        "timestamp": start_time
-    }))
-
-    # Ensure model is available; if not, return an error (no mock fallback)
-    _load_model_if_needed()
-
-    if torch is None:
-        logger.error(json.dumps({
-            "event": "lambda_analysis_failed",
-            "filename": file.filename,
-            "error": "Torch not available in runtime",
-            "file_size_bytes": file_size,
-            "total_time_ms": round((time.time() - start_time) * 1000, 2),
-            "success": False
-        }))
-        raise HTTPException(status_code=500, detail="Torch not available in runtime")
-    
-    if _model is None:
-        detail = _model_loaded_error or "Model not loaded"
-        logger.error(json.dumps({
-            "event": "lambda_analysis_failed",
-            "filename": file.filename,
-            "error": detail,
-            "file_size_bytes": file_size,
-            "total_time_ms": round((time.time() - start_time) * 1000, 2),
-            "success": False
-        }))
-        raise HTTPException(status_code=503, detail=detail)
-
     try:
-        image = Image.open(io.BytesIO(content)).convert("RGB")
+        # Validate input and get content
+        content, file_size = await validate_file_input(file)
         
-        # Validate image dimensions
-        _validate_image_dimensions(image)
+        # Ensure model is available
+        _load_model_if_needed()
+
+        if torch is None:
+            raise HTTPException(status_code=500, detail="Torch not available in runtime")
         
+        if _model is None:
+            detail = _model_loaded_error or "Model not loaded"
+            raise HTTPException(status_code=503, detail=detail)
+
+        # Process image
+        image = process_image_from_content(content)
         image_tensor = _preprocess(image)
         
         # Inference timing
@@ -269,12 +207,11 @@ async def analyze(file: UploadFile = File(...)):
             confidence, predicted = torch.max(probabilities, 1)
 
         inference_time = time.time() - inference_start
-        total_time = time.time() - start_time
 
         predicted_class = _class_names[predicted.item()] if _class_names else "Unknown"
         confidence_score = float(confidence.item())
 
-        # top-k
+        # Generate predictions
         k = min(3, len(_class_names) or 3)
         top_probs, top_indices = torch.topk(probabilities, k=k)
         top_predictions = [
@@ -291,21 +228,15 @@ async def analyze(file: UploadFile = File(...)):
             for prob, idx in zip(all_probs[0], all_indices[0])
         ]
 
-        review = f"Analysis for {file.filename} completed"
+        # Generate AI review
+        review = generate_review(predicted_class, confidence_score)
 
-        # Structured logging: successful analysis
-        logger.info(json.dumps({
-            "event": "lambda_analysis_completed",
-            "filename": file.filename,
-            "predicted_class": predicted_class,
-            "confidence": confidence_score,
-            "inference_time_ms": round(inference_time * 1000, 2),
-            "total_time_ms": round(total_time * 1000, 2),
-            "file_size_bytes": file_size,
-            "image_dimensions": f"{image.width}x{image.height}",
-            "success": True,
-            "model_loaded": _model is not None
-        }))
+        # Log success
+        with AnalysisLogger(logger, file.filename, file_size, is_lambda=True) as analysis_logger:
+            analysis_logger.log_success(
+                predicted_class, confidence_score, 
+                inference_time * 1000, f"{image.width}x{image.height}"
+            )
 
         return {
             "predicted_style": predicted_class,
@@ -314,21 +245,17 @@ async def analyze(file: UploadFile = File(...)):
             "top_predictions": top_predictions,
             "all_predictions": all_predictions
         }
+        
+    except ValidationError:
+        # Re-raise validation errors
+        raise
     except HTTPException:
-        # Re-raise HTTP exceptions (validation errors)
+        # Re-raise HTTP exceptions
         raise
     except Exception as e:  # noqa: S110
-        # Structured logging: analysis failed
-        logger.error(json.dumps({
-            "event": "lambda_analysis_failed",
-            "filename": file.filename,
-            "error": str(e),
-            "file_size_bytes": file_size,
-            "total_time_ms": round((time.time() - start_time) * 1000, 2),
-            "success": False,
-            "model_loaded": _model is not None
-        }))
-        # Surface real errors to caller to aid debugging when using real model
+        # Log and handle other errors
+        with AnalysisLogger(logger, file.filename, file_size, is_lambda=True) as analysis_logger:
+            analysis_logger.log_error(str(e))
         raise HTTPException(status_code=500, detail=f"Inference error: {e}")
 
 
