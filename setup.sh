@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Art Trend Classifier - Setup Script
-# This script sets up the project on a new device
+# Automated setup for new environments
 
 set -e  # Exit on any error
 
@@ -19,14 +19,10 @@ if ! python3 -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" 2>/de
 fi
 echo "✅ Python version is compatible"
 
-# Check if virtual environment exists
-if [ ! -d "venv" ]; then
-    echo "📦 Creating virtual environment..."
-    python3 -m venv venv
-    echo "✅ Virtual environment created"
-else
-    echo "✅ Virtual environment already exists"
-fi
+# Create virtual environment
+echo "📦 Creating virtual environment..."
+python3 -m venv venv
+echo "✅ Virtual environment created"
 
 # Activate virtual environment
 echo "🔧 Activating virtual environment..."
@@ -47,24 +43,12 @@ import fastapi
 import torch
 import torchvision
 import albumentations
-import cv2
-import numpy as np
 import PIL
-import sklearn
-import matplotlib
+import numpy as np
 import mangum
 import boto3
 print('✅ All core dependencies imported successfully')
 "
-
-# Check if model files exist
-echo "🤖 Checking model files..."
-if [ -f "ml_model/model/model_best_82_73.pth" ]; then
-    echo "✅ Model file found"
-else
-    echo "⚠️ Warning: Model file not found. You may need to train a model first."
-    echo "   Run: cd ml_model && python train.py"
-fi
 
 # Test backend import
 echo "🔧 Testing backend import..."

@@ -10,7 +10,7 @@ AI-powered web application for recognizing art styles and generating detailed ar
 - **18 Art Styles Recognition**: From Impressionism to Pop Art
 - **Instant Analysis**: Get results in seconds
 - **AI-Generated Reviews**: Detailed artistic analysis based on confidence levels
-- **High Accuracy**: 82% training, 73% validation accuracy - will be updated in future
+- **High Accuracy**: 82% training, 73% validation accuracy
 - **Free to Use**: No registration required
 - **Cloud Deployment**: AWS Lambda backend with S3 frontend hosting
 - **Scalable Architecture**: Serverless infrastructure for global availability
@@ -31,10 +31,9 @@ AI-powered web application for recognizing art styles and generating detailed ar
   - `landing.html` – Professional landing page
   - `index.html` – Main application interface
 - `lambda/` – AWS Lambda deployment package
-- `docs/` – Documentation and notes
+- `docs/examples/` – Test images for development
 - `setup.sh` – Automated setup script
 - `docker-compose.yml` – Docker containerization
-- `.github/workflows/` – CI/CD pipelines
 
 ## 🚀 Quick Start
 
@@ -50,6 +49,7 @@ AI-powered web application for recognizing art styles and generating detailed ar
 ```bash
 git clone https://github.com/yourusername/art-trend-classifier.git
 cd art-trend-classifier
+chmod +x setup.sh
 ./setup.sh
 ```
 
@@ -80,17 +80,32 @@ docker-compose up --build
 ```
 
 ### Running the Application
+
+#### Local Development
 1. Start the backend server:
 ```bash
 cd backend
 python main.py
 ```
 
-2. Open the frontend:
-- **Landing Page**: Open `frontend/landing.html` in your browser
-- **Main App**: Open `frontend/index.html` in your browser
+2. Start the frontend server (in another terminal):
+```bash
+cd frontend
+python -m http.server 3000
+```
 
-3. Upload an artwork image and get instant analysis!
+3. Open the application:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+
+#### Docker Development
+```bash
+# Build and run with Docker
+docker-compose up --build
+
+# Access application
+open http://localhost:3000
+```
 
 ## 🤖 ML Model Details
 
@@ -177,6 +192,7 @@ curl -X POST "http://localhost:8000/analyze" \
 - **PIL/Pillow** - Image handling
 - **Mangum** - AWS Lambda ASGI adapter
 - **Boto3** - AWS SDK for Python
+- **SlowAPI** - Rate limiting
 
 ### Frontend
 - **HTML5/CSS3** - Modern web interface
@@ -196,21 +212,6 @@ curl -X POST "http://localhost:8000/analyze" \
 - **AWS ECR** - Container registry
 - **GitHub Actions** - CI/CD automation
 
-## 📱 Features Overview
-
-### Landing Page (`landing.html`)
-- **Professional Design** - Modern gradient backgrounds
-- **Animated Sections** - Scroll-triggered animations
-- **Responsive Layout** - Works on all devices
-- **Call-to-Action** - Direct links to main application
-
-### Main Application (`index.html`)
-- **Drag & Drop Upload** - Easy image selection
-- **Real-time Preview** - Instant image preview
-- **Confidence Visualization** - Visual confidence bars
-- **Expandable Results** - View all predictions
-- **AI Reviews** - Contextual artistic analysis
-
 ## 🚀 Deployment
 
 ### Production Deployment
@@ -227,8 +228,12 @@ The application is deployed on AWS infrastructure:
 cd backend
 python main.py
 
-# Access frontend
-open frontend/index.html
+# Start frontend locally
+cd frontend
+python -m http.server 3000
+
+# Access application
+open http://localhost:3000
 ```
 
 ### Docker Development
@@ -254,10 +259,22 @@ cd ml_model
 python test.py
 ```
 
-### Backend Development
+### Running Tests
 ```bash
-cd backend
-python main.py
+# Integration tests
+DISABLE_RATE_LIMITS=true python backend/tests/integration_test.py
+
+# Edge case tests
+DISABLE_RATE_LIMITS=true python backend/tests/edge_case_test.py
+
+# Performance tests
+DISABLE_RATE_LIMITS=true python backend/tests/performance_test.py
+
+# Bug fix tests
+DISABLE_RATE_LIMITS=true python backend/tests/bug_fix_test.py
+
+# Frontend tests
+python frontend/tests/cross_browser_test.py
 ```
 
 ### Automated Setup
@@ -277,23 +294,25 @@ cd backend
 python -c "import main; print('✅ Backend ready')"
 ```
 
-## 🆕 New Features
+## 🆕 Recent Updates
 
-### Recent Additions
-- **AWS Lambda Deployment**: Serverless backend for global scalability
-- **Automated Setup Script**: One-command installation for new environments
-- **Enhanced CI/CD**: GitHub Actions for automated deployment
+### Security & Performance
+- **Rate Limiting**: Implemented with SlowAPI
+- **Input Validation**: File size and dimension limits
+- **Security Headers**: X-Content-Type-Options, X-Frame-Options, etc.
+- **Structured Logging**: Inference time, input size, top-1 class tracking
+- **Single File Read**: Prevents memory issues with large files
+
+### Code Quality
+- **Modular Architecture**: Separated config, validation, reviews, logging
+- **Comprehensive Testing**: Integration, edge case, performance, bug fix tests
+- **Error Handling**: Improved user experience and debugging
 - **Docker Support**: Containerized development and deployment
-- **Cross-browser Testing**: Comprehensive browser compatibility
-- **Improved Error Handling**: Better user experience and debugging
-- **Model Optimization**: Enhanced inference performance
-- **Security Updates**: Updated dependencies and security patches
 
-### New Development Tools
-- **Setup Script**: `./setup.sh` for automated environment setup
-- **Docker Compose**: `docker-compose.yml` for containerized development
-- **GitHub Workflows**: Automated testing and deployment
-- **Enhanced Documentation**: Comprehensive setup and troubleshooting guides
+### Dependencies
+- **Minimal Requirements**: Reduced from 76 to 15 core dependencies
+- **Version Synchronization**: Consistent versions across all environments
+- **AWS Lambda Support**: Optimized for serverless deployment
 
 ## 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.
@@ -301,19 +320,19 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## 🌐 Live Demo & Links
 
 - **🌐 Live Application**: [https://d3hxkd3bumy7al.cloudfront.net](https://d3hxkd3bumy7al.cloudfront.net)
-- **📚 Documentation**: See `docs/` folder for detailed notes
+- **📚 Documentation**: See `docs/examples/` folder for test images
 - **🐳 Docker Hub**: Available for containerized deployment
 - **☁️ AWS Infrastructure**: Serverless architecture on AWS
 
 ## 📊 Project Status
 
-- ✅ **Backend**: Fully functional FastAPI server
-- ✅ **Frontend**: Responsive web interface
+- ✅ **Backend**: Fully functional FastAPI server with rate limiting
+- ✅ **Frontend**: Responsive web interface with modern design
 - ✅ **ML Model**: Trained ResNet50 with 82% accuracy
 - ✅ **Deployment**: AWS Lambda + S3 hosting
-- ✅ **CI/CD**: Automated GitHub Actions
-- ✅ **Testing**: Cross-browser compatibility
-- ✅ **Documentation**: Comprehensive setup guides
+- ✅ **Testing**: Comprehensive test suite (integration, edge cases, performance)
+- ✅ **Security**: Input validation, rate limiting, security headers
+- ✅ **Documentation**: Comprehensive setup guides and API docs
 
 ## CI/CD (GitHub Actions)
 
